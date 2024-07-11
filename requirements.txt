@@ -1,0 +1,7 @@
+pyaudio
+pydub
+fastapi
+uvicorn
+python-multipart
+openai
+livereload

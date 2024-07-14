@@ -55,16 +55,16 @@ class AudioStream:
                 frame = data[i*frame_width:(i+1)*frame_width]
                 if self.vad.is_speech(frame, 16000):
                     speech_frames += 1
+            is_speech = speech_frames > frames_per_check // 2  # 如果超過一半的幀是語音，就認為這 500 ms 是語音 
 
-            is_speech = speech_frames > frames_per_check // 2  # 如果超過一半的幀是語音，就認為這 500 ms 是語音
-
-            if is_speech:
-                print("Speech detected")
+            if is_speech and len(audio_buffer) < frames_per_check*10*15:
+                #print("Speech detected")
                 audio_segment = AudioSegment(data, sample_width=2, frame_rate=16000, channels=1)
                 audio_buffer += audio_segment
                 silence_duration = 0
+                #print(1, len(audio_buffer))
             else:
-                print("No speech detected")
+                #print("No speech detected")
                 silence_duration += frame_duration * frames_per_check
 
                 # 如果静音持续超过 2 秒，且缓冲区中有数据，则进行处理

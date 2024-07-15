@@ -2,3 +2,5 @@ ffmpeg-python==0.2.0
 pydub==0.25.1
 numpy==2.0.0
 webrtcvad==2.0.10
+# insanely-fast-whisper==0.0.15 not support CPU, or jsut very slow, I transfer 13 minuts 
+faster-whisper==4.42.4

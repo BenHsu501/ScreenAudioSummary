@@ -8,6 +8,10 @@ from openai import OpenAI
 import webrtcvad
 from pydub import AudioSegment
 from io import BytesIO
+import torch
+from transformers import pipeline
+import librosa
+
 
 class AudioStream:
     def __init__(self):
@@ -23,6 +27,27 @@ class AudioStream:
         )
         return transcription
     
+    def transcribe_audio_fastapi(self, audio_file):
+        '''
+        the code from huggingface.co
+        '''
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+        pipe = pipeline(
+            "automatic-speech-recognition",
+            model="openai/whisper-large-v2",
+            chunk_length_s=30,
+            device=device,
+        )
+                # Load the MP3 file
+        audio_path = "path/to/your/audio_file.mp3"
+        audio, sr = librosa.load(audio_path, sr=16000)  # Whisper expects 16kHz sample rate
+
+        # Transcribe the audio
+        prediction = pipe(audio, batch_size=8)["text"]
+        print(prediction)
+
+
     def process_audio_stream(self):
         command = [
             'ffmpeg',
@@ -38,7 +63,7 @@ class AudioStream:
         process = subprocess.Popen(command, stdout=subprocess.PIPE)
 
         frame_duration = 10  # 每幀 10 ms
-        frames_per_check = 50  # 每 50 幀檢查一次，即 500 ms
+        frames_per_check = 10  # 每 10 幀檢查一次，即 100 ms
         frame_width = 2 * 16000 * frame_duration // 1000  # 2 bytes per sample
         check_width = frame_width * frames_per_check
 
@@ -57,26 +82,36 @@ class AudioStream:
                     speech_frames += 1
             is_speech = speech_frames > frames_per_check // 2  # 如果超過一半的幀是語音，就認為這 500 ms 是語音 
 
-            if is_speech and len(audio_buffer) < frames_per_check*10*15:
+            if is_speech and len(audio_buffer) < frame_duration*frames_per_check*50: # 少於 5 秒，則儲存
+                print(111, len(audio_buffer), frame_duration*frames_per_check*500)
                 #print("Speech detected")
                 audio_segment = AudioSegment(data, sample_width=2, frame_rate=16000, channels=1)
                 audio_buffer += audio_segment
                 silence_duration = 0
-                #print(1, len(audio_buffer))
-            else:
+            elif len(audio_buffer) >= frame_duration*frames_per_check*100:
+                print(222)
+                audio_data = audio_buffer.export(format="mp3")
+                audio_file = BytesIO(audio_data.read())
+                audio_file.name = "audio.mp3"  # OpenAI API 需要文件名
+                result = self.transcribe_audio(audio_file)
+                print("Transcription:" + result)
+                audio_buffer = AudioSegment.empty()  # 清空缓存
+                silence_duration = 0
+            else: 
                 #print("No speech detected")
                 silence_duration += frame_duration * frames_per_check
 
                 # 如果静音持续超过 2 秒，且缓冲区中有数据，则进行处理
                 if silence_duration > 2000 and len(audio_buffer) > 0:
+
                     audio_data = audio_buffer.export(format="mp3")
                     audio_file = BytesIO(audio_data.read())
                     audio_file.name = "audio.mp3"  # OpenAI API 需要文件名
                     result = self.transcribe_audio(audio_file)
-                    print("Transcription:", result)
+                    print("Transcription:" + result)
                     audio_buffer = AudioSegment.empty()  # 清空缓存
                     silence_duration = 0
-
+            
         # 确保处理完所有数据
         if len(audio_buffer) > 0:
             audio_data = audio_buffer.export(format="mp3")
@@ -86,6 +121,13 @@ class AudioStream:
             print("Final transcription:", result)
 
         process.wait()
+
+def print_slowly(text, delay=0.1):
+    for char in text:
+        sys.stdout.write(char)
+        sys.stdout.flush()
+        time.sleep(delay)
+    print()  # 在最後添加
 
 if __name__ == "__main__":
     client = AudioStream()
